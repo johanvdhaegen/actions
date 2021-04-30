@@ -66,6 +66,48 @@ if [[ "$GITHUB_REPOSITORY" =~ ^.+/brew$ ]]; then
 else
     git_retry -C "$HOMEBREW_REPOSITORY" fetch --force origin
     git -C "$HOMEBREW_REPOSITORY" checkout --force -B master origin/HEAD
+    cd "$HOMEBREW_REPOSITORY"
+    patch -p1 << 'EOF'
+--- a/Library/Homebrew/dev-cmd/pr-pull.rb
++++ b/Library/Homebrew/dev-cmd/pr-pull.rb
+@@ -300,10 +300,16 @@ module Homebrew
+   end
+
+   def formulae_need_bottles?(tap, original_commit, user, repo, pr, args:)
++    ohai "... Checking if dry run ..."
+     return if args.dry_run?
++    ohai "... Checking if CI-syntax-only label ..."
+     return false if GitHub.pull_request_labels(user, repo, pr).include? "CI-syntax-only"
+
++    ohai "... Checking if bottles needed ..."
+     changed_formulae(tap, original_commit).any? do |f|
++      ohai "... Formula #{f.full_name}:"
++      ohai "...... bottle_undeeded: #{f.bottle_unneeded}"
++      ohai "...... bottle_disabled: #{f.bottle_disabled}"
+       !f.bottle_unneeded? && !f.bottle_disabled?
+     end
+   end
+@@ -334,14 +340,18 @@ module Homebrew
+       return
+     end
+
++    ohai "... Checking tap path: #{tap.path} ..."
++    ohai "... For original commit: #{original_commit} ..."
+     Utils.popen_read("git", "-C", tap.path, "diff-tree",
+                      "-r", "--name-only", "--diff-filter=AM",
+                      original_commit, "HEAD", "--", tap.formula_dir)
+          .lines
+          .map do |line|
++      ohai "... git output: #{line}"
+       next unless line.end_with? ".rb\n"
+
+       name = "#{tap.name}/#{File.basename(line.chomp, ".rb")}"
++      ohai "... Changed formula: #{name}"
+       Formula[name]
+     end.compact
+   end
+EOF
+    cd -
 fi
 
 # Setup Homebrew Bundler RubyGems cache
